@@ -1,2 +1,2 @@
 #!/bin/bash
-DOCKER_IMAGE_TAG=$(git rev-parse --short HEAD) docker compose up -d
+DOCKER_IMAGE_TAG="official-$(git rev-parse --short HEAD)" docker compose up -d
