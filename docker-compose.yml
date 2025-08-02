@@ -1,36 +1,9 @@
-# docker-compose.yml for AzerothCore.
-#
-# Start the server with `docker compose up -d --build`
-#
-# Don't make changes this file! make a `docker-compose.override.yml` and make your
-# changes there instead.
-
 services:
-  ac-database:
-    container_name: ac-database
-    image: mysql:8.4
-    networks:
-      - ac-network
-    ports:
-      - ${DOCKER_DB_EXTERNAL_PORT:-3306}:3306
-    environment:
-      - MYSQL_ROOT_PASSWORD=${DOCKER_DB_ROOT_PASSWORD:-password}
-    volumes:
-      - type: volume
-        source: ac-database
-        target: /var/lib/mysql
-    restart: unless-stopped
-    healthcheck:
-      test: "/usr/bin/mysql --user=root --password=$$MYSQL_ROOT_PASSWORD --execute \"SHOW DATABASES;\""
-      interval: 5s
-      timeout: 10s
-      retries: 40
-
   ac-db-import:
     container_name: ac-db-import
-    image: acore/ac-wotlk-db-import:${DOCKER_IMAGE_TAG:-master}
-    networks:
-      - ac-network
+    image: ${DOCKER_REPO}/ac-wotlk-db-import:${DOCKER_IMAGE_TAG:-master}
+    # networks:
+    #   - ac-network
     build:
       context: .
       target: db-import
@@ -42,20 +15,17 @@ services:
     environment:
       AC_DATA_DIR: "/azerothcore/env/dist/data"
       AC_LOGS_DIR: "/azerothcore/env/dist/logs"
-      AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_auth"
-      AC_WORLD_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_world"
-      AC_CHARACTER_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_characters"
+      AC_LOGIN_DATABASE_INFO: "${DB_SERVER_INFO};acore_auth"
+      AC_WORLD_DATABASE_INFO: "${DB_SERVER_INFO};acore_world"
+      AC_CHARACTER_DATABASE_INFO: "${DB_SERVER_INFO};acore_characters"
     volumes:
       - ${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
       # [osxfs optimization]: https://stackoverflow.com/a/63437557/1964544
       - ${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:delegated
-    depends_on:
-      ac-database:
-        condition: service_healthy
 
   ac-worldserver:
     container_name: ac-worldserver
-    image: acore/ac-wotlk-worldserver:${DOCKER_IMAGE_TAG:-master}
+    image: ${DOCKER_REPO}/ac-wotlk-worldserver:${DOCKER_IMAGE_TAG:-master}
     build:
       context: .
       target: worldserver
@@ -64,19 +34,36 @@ services:
         USER_ID: ${DOCKER_USER_ID:-1000}
         GROUP_ID: ${DOCKER_GROUP_ID:-1000}
         DOCKER_USER: ${DOCKER_USER:-acore}
-    networks:
-      - ac-network
     stdin_open: true
     tty: true
     restart: unless-stopped
-    env_file:
-        ${DOCKER_AC_ENV_FILE:-conf/dist/env.ac}
+    env_file: ${DOCKER_AC_ENV_FILE:-conf/dist/env.ac}
     environment:
       AC_DATA_DIR: "/azerothcore/env/dist/data"
       AC_LOGS_DIR: "/azerothcore/env/dist/logs"
-      AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_auth"
-      AC_WORLD_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_world"
-      AC_CHARACTER_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_characters"
+      AC_LOGIN_DATABASE_INFO: "${DB_SERVER_INFO};acore_auth"
+      AC_WORLD_DATABASE_INFO: "${DB_SERVER_INFO};acore_world"
+      AC_CHARACTER_DATABASE_INFO: "${DB_SERVER_INFO};acore_characters"
+      # conf
+      AC_RATE_XP_QUEST: ${AC_RATE_XP_QUEST:-1}
+      AC_RATE_XP_QUEST_DF: ${AC_RATE_XP_QUEST_DF:-1}
+      AC_RATE_XP_EXPLORE: ${AC_RATE_XP_EXPLORE:-1}
+      AC_RATE_XP_PET: ${AC_RATE_XP_PET:-1}
+      AC_RATE_REPUTATION_GAIN: ${AC_RATE_REPUTATION_GAIN:-20}
+      AC_RATE_REWARD_QUEST_MONEY: ${AC_RATE_REWARD_QUEST_MONEY:-20}
+      AC_RATE_REWARD_BONUS_MONEY: ${AC_RATE_REWARD_BONUS_MONEY:-20}
+      AC_MAX_PRIMARY_TRADE_SKILL: ${AC_MAX_PRIMARY_TRADE_SKILL:-11}
+      AC_CORPSE_DECAY_LOOTED: ${AC_CORPSE_DECAY_LOOTED:-0.05}
+      AC_SKILL_CHANCE_PROSPECTING: ${AC_SKILL_CHANCE_PROSPECTING:-1}
+      AC_SKILL_CHANCE_MILLING: ${AC_SKILL_CHANCE_MILLING:-1}
+      AC_SKILL_CHANCE_ORANGE: ${AC_SKILL_CHANCE_ORANGE:-1500}
+      AC_SKILL_CHANCE_YELLOW: ${AC_SKILL_CHANCE_YELLOW:-1000}
+      AC_SKILL_CHANCE_GREEN: ${AC_SKILL_CHANCE_GREEN:-500}
+      AC_SKILL_CHANCE_GREY: ${AC_SKILL_CHANCE_GREY:-200}
+      AC_STATS_LIMITS_DODGE: ${AC_STATS_LIMITS_DODGE:-150.0}
+      AC_STATS_LIMITS_PARRY: ${AC_STATS_LIMITS_PARRY:-150.0}
+      AC_STATS_LIMITS_BLOCK: ${AC_STATS_LIMITS_BLOCK:-150.0}
+      AC_STATS_LIMITS_CRIT: ${AC_STATS_LIMITS_CRIT:-150.0}
     ports:
       - ${DOCKER_WORLD_EXTERNAL_PORT:-8085}:8085
       - ${DOCKER_SOAP_EXTERNAL_PORT:-7878}:7878
@@ -87,8 +74,6 @@ services:
       # client data
       - ${DOCKER_VOL_DATA:-ac-client-data}:/azerothcore/env/dist/data/:ro
     depends_on:
-      ac-database:
-        condition: service_healthy
       ac-db-import:
         condition: service_completed_successfully
       ac-client-data-init:
@@ -96,7 +81,7 @@ services:
 
   ac-authserver:
     container_name: ac-authserver
-    image: acore/ac-wotlk-authserver:${DOCKER_IMAGE_TAG:-master}
+    image: ${DOCKER_REPO}/ac-wotlk-authserver:${DOCKER_IMAGE_TAG:-master}
     build:
       context: .
       target: authserver
@@ -105,16 +90,13 @@ services:
         USER_ID: ${DOCKER_USER_ID:-1000}
         GROUP_ID: ${DOCKER_GROUP_ID:-1000}
         DOCKER_USER: ${DOCKER_USER:-acore}
-    networks:
-      - ac-network
     tty: true
     restart: unless-stopped
-    env_file:
-        ${DOCKER_AC_ENV_FILE:-conf/dist/env.ac}
+    env_file: ${DOCKER_AC_ENV_FILE:-conf/dist/env.ac}
     environment:
       AC_LOGS_DIR: "/azerothcore/env/dist/logs"
       AC_TEMP_DIR: "/azerothcore/env/dist/temp"
-      AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_auth"
+      AC_LOGIN_DATABASE_INFO: "${DB_SERVER_INFO};acore_auth"
     volumes:
       - ${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
       # [osxfs optimization]: https://stackoverflow.com/a/63437557/1964544
@@ -122,14 +104,12 @@ services:
     ports:
       - ${DOCKER_AUTH_EXTERNAL_PORT:-3724}:3724
     depends_on:
-      ac-database:
-        condition: service_healthy
       ac-db-import:
         condition: service_completed_successfully
 
   ac-client-data-init:
     container_name: ac-client-data-init
-    image: acore/ac-wotlk-client-data:${DOCKER_IMAGE_TAG:-master}
+    image: ${DOCKER_REPO}/ac-wotlk-client-data:${DOCKER_IMAGE_TAG:-master}
     build:
       context: .
       target: client-data
@@ -145,7 +125,7 @@ services:
   # Most of the time this shouldn't be needed
   ac-tools:
     container_name: ac-tools
-    image: acore/ac-wotlk-tools:${DOCKER_IMAGE_TAG:-master}
+    image: ${DOCKER_REPO}/ac-wotlk-tools:${DOCKER_IMAGE_TAG:-master}
     build:
       context: .
       target: tools
@@ -159,7 +139,7 @@ services:
       # this is not the directory of the extracted data! It's the client folder used by the extractors
       - ${DOCKER_AC_CLIENT_FOLDER:-./var/client}:/azerothcore/env/dist/bin/Data
     # Activate with `docker compose --profile tools ...`
-    profiles: [tools]
+    profiles: [ tools ]
 
   # Dev server with the ./azerothcore folder binded from the host
   # Please use Linux, WSL2 or any ext-compatible filesystem
@@ -171,7 +151,7 @@ services:
   # first-class support
   ac-dev-server:
     tty: true
-    image: acore/ac-wotlk-dev-server:${DOCKER_IMAGE_TAG:-master}
+    image: ${DOCKER_REPO}/ac-wotlk-dev-server:${DOCKER_IMAGE_TAG:-master}
     build:
       context: .
       dockerfile: ./apps/docker/Dockerfile.dev-server
@@ -180,16 +160,13 @@ services:
         GROUP_ID: ${DOCKER_GROUP_ID:-1000}
         DOCKER_USER: ${DOCKER_USER:-acore}
       target: dev
-    env_file:
-        ${DOCKER_AC_ENV_FILE:-conf/dist/env.ac}
+    env_file: ${DOCKER_AC_ENV_FILE:-conf/dist/env.ac}
     environment:
       AC_DATA_DIR: "/azerothcore/env/dist/data"
       AC_LOGS_DIR: "/azerothcore/env/dist/logs"
-      AC_LOGIN_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_auth"
-      AC_WORLD_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_world"
-      AC_CHARACTER_DATABASE_INFO: "ac-database;3306;root;${DOCKER_DB_ROOT_PASSWORD:-password};acore_characters"
-    networks:
-      - ac-network
+      AC_LOGIN_DATABASE_INFO: "${DB_SERVER_INFO};acore_auth"
+      AC_WORLD_DATABASE_INFO: "${DB_SERVER_INFO};acore_world"
+      AC_CHARACTER_DATABASE_INFO: "${DB_SERVER_INFO};acore_characters"
     ports:
       - ${DOCKER_AUTH_EXTERNAL_PORT:-3724}:3724
       - ${DOCKER_WORLD_EXTERNAL_PORT:-8085}:8085
@@ -202,17 +179,10 @@ services:
       # this is not the directory of the extracted data! It's the client folder used by the extractors
       - ${DOCKER_AC_CLIENT_FOLDER:-./var/client}:/azerothcore/env/dist/bin/Data
     # Activate with `docker compose --profile dev ...`
-    profiles: [dev]
-    depends_on:
-      ac-database:
-        condition: service_healthy
+    profiles: [ dev ]
 
 volumes:
-  ac-database:
-  ac-client-data:
   # Used for dev server
+  ac-client-data:
   ac-build-dev:
   ac-ccache-dev:
-
-networks:
-  ac-network:
